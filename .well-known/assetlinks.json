@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "io.github.cdmfighting_hub.twa",
+        "sha256_cert_fingerprints": ["54:53:92:14:1E:F1:F4:11:9E:F3:0D:61:40:7A:85:65:7A:A5:C7:D3:E8:24:30:3C:85:41:66:82:CB:46:BE:29"]
+      }
+    }]
