@@ -8,9 +8,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="우리집 가계부">
-<link rel="manifest" href="manifest.json">
-<link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232B3A4A'/%3E%3Ctext x='50' y='68' font-size='54' text-anchor='middle' fill='white' font-family='serif'%3E%E2%82%A9%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%232B3A4A'/%3E%3Ctext x='50' y='68' font-size='54' text-anchor='middle' fill='white' font-family='serif'%3E%E2%82%A9%3C/text%3E%3C/svg%3E">
 <title>우리집 가계부</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet">
@@ -319,6 +318,7 @@
         <div class="label" id="monthLabel">2026년 8월</div>
         <button id="nextMonth">›</button>
       </div>
+      <div style="text-align:center;font-size:11.5px;color:var(--muted);margin:-10px 0 14px;" id="monthRangeLabel"></div>
 
       <div class="seal-card">
         <div class="balance-label">이번 달 잔액</div>
@@ -422,6 +422,7 @@
           <div class="label" id="analysisMonthLabel">2026년 8월</div>
           <button id="nextAnalysisMonth">›</button>
         </div>
+        <div style="text-align:center;font-size:11.5px;color:var(--muted);margin:-10px 0 14px;" id="analysisMonthRangeLabel"></div>
         <div class="io-row" style="margin-bottom:16px;">
           <div class="io-box income"><div class="t">수입</div><div class="v num" id="analysisIncomeAmt">0원</div></div>
           <div class="io-box expense"><div class="t">지출</div><div class="v num" id="analysisExpenseAmt">0원</div></div>
@@ -494,6 +495,15 @@
           </div>
         </div>
         <button class="btn ghost btn-sm" id="saveNames">이름 저장</button>
+      </div>
+
+      <div class="card">
+        <div class="field">
+          <label>월 시작일 (급여일 등 기준)</label>
+          <input type="number" id="startDayInput" min="1" max="28" placeholder="1">
+          <div class="help-txt">예를 들어 15일로 설정하면, "7월"은 7월 15일부터 8월 14일까지로 표시돼요. 기본값은 1일(달력 기준 1일~말일)이에요.</div>
+        </div>
+        <button class="btn ghost btn-sm" id="saveStartDay">저장</button>
       </div>
 
       <div class="card">
@@ -637,7 +647,8 @@ let state = {
   recurringLog: {},
   categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
   names: { me: "나", spouse: "배우자" },
-  syncedIds: []
+  syncedIds: [],
+  startDay: 1
 };
 let settings = { geminiApiKey: "", sheetUrl: SHEET_WEBAPP_URL };
 
@@ -885,13 +896,32 @@ $('prevMonth').addEventListener('click', ()=>shiftMonth(-1));
 $('nextMonth').addEventListener('click', ()=>shiftMonth(1));
 
 /* ---------- home render ---------- */
-function txInMonth(d){
-  const key = ymKey(d);
-  return state.transactions.filter(t=>t.date.slice(0,7)===key);
+function getPeriodRange(anchorDate){
+  const day = Math.min(28, Math.max(1, parseInt(state.startDay,10) || 1));
+  const y = anchorDate.getFullYear(), m = anchorDate.getMonth();
+  const start = new Date(y, m, day);
+  const end = new Date(y, m + 1, day); // exclusive
+  return { start, end };
+}
+function txInMonth(anchorDate){
+  const { start, end } = getPeriodRange(anchorDate);
+  return state.transactions.filter(t=>{
+    const d = new Date(t.date + 'T00:00:00');
+    return d >= start && d < end;
+  });
+}
+
+function periodRangeLabel(anchorDate){
+  const { start, end } = getPeriodRange(anchorDate);
+  const endInclusive = new Date(end.getTime() - 86400000);
+  const fmt = (d)=> `${d.getMonth()+1}/${d.getDate()}`;
+  if((parseInt(state.startDay,10)||1) === 1) return ''; // plain calendar month, no need to show range
+  return `${fmt(start)} ~ ${fmt(endInclusive)}`;
 }
 
 function renderHome(){
   $('monthLabel').textContent = monthLabel(currentMonth);
+  $('monthRangeLabel').textContent = periodRangeLabel(currentMonth);
   const list = txInMonth(currentMonth);
   const income = list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expense = list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -1038,6 +1068,7 @@ $('prevAnalysisMonth').addEventListener('click', ()=>{ analysisMonthDate = new D
 $('nextAnalysisMonth').addEventListener('click', ()=>{ analysisMonthDate = new Date(analysisMonthDate.getFullYear(), analysisMonthDate.getMonth()+1, 1); renderAnalysisMonth(); });
 function renderAnalysisMonth(){
   $('analysisMonthLabel').textContent = monthLabel(analysisMonthDate);
+  $('analysisMonthRangeLabel').textContent = periodRangeLabel(analysisMonthDate);
   const list = txInMonth(analysisMonthDate);
   const income = list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
   const expense = list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
@@ -1050,11 +1081,11 @@ $('prevAnalysisYear').addEventListener('click', ()=>{ analysisYear -= 1; renderA
 $('nextAnalysisYear').addEventListener('click', ()=>{ analysisYear += 1; renderAnalysisYear(); });
 function renderAnalysisYear(){
   $('analysisYearLabel').textContent = analysisYear + '년';
-  const list = state.transactions.filter(t=>t.date.slice(0,4)===String(analysisYear));
-  const monthly = Array.from({length:12},()=>({income:0,expense:0}));
-  list.forEach(t=>{
-    const m = parseInt(t.date.slice(5,7),10)-1;
-    if(monthly[m]) monthly[m][t.type] += t.amount;
+  const monthly = Array.from({length:12}, (_, m)=>{
+    const list = txInMonth(new Date(analysisYear, m, 1));
+    const income = list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+    const expense = list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+    return { income, expense, list };
   });
   const max = Math.max(1, ...monthly.flatMap(m=>[m.income,m.expense]));
   $('yearTrendChart').innerHTML = `
@@ -1074,9 +1105,10 @@ function renderAnalysisYear(){
       <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--expense);margin-right:5px;"></span>지출</span>
     </div>
   `;
-  $('analysisYearCatBreakdown').innerHTML = buildDonut(categoryTotals(list,'expense'));
-  const yIncome = list.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
-  const yExpense = list.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const allList = monthly.flatMap(m=>m.list);
+  $('analysisYearCatBreakdown').innerHTML = buildDonut(categoryTotals(allList,'expense'));
+  const yIncome = monthly.reduce((s,m)=>s+m.income,0);
+  const yExpense = monthly.reduce((s,m)=>s+m.expense,0);
   $('analysisYearIncomeAmt').textContent = fmtWon(yIncome);
   $('analysisYearExpenseAmt').textContent = fmtWon(yExpense);
 }
@@ -1337,6 +1369,7 @@ function renderSettings(){
   ).join('');
   $('nameMe').value = state.names.me;
   $('nameSpouse').value = state.names.spouse;
+  $('startDayInput').value = state.startDay || 1;
 }
 window.delCategory = function(type, cat){
   state.categories[type] = state.categories[type].filter(c=>c!==cat);
@@ -1357,6 +1390,15 @@ $('saveNames').addEventListener('click', ()=>{
   state.names.spouse = $('nameSpouse').value.trim() || '배우자';
   saveData(); renderWhoSelect(); renderHome();
   toast('이름을 저장했어요');
+});
+$('saveStartDay').addEventListener('click', async ()=>{
+  const day = Math.min(28, Math.max(1, parseInt($('startDayInput').value,10) || 1));
+  state.startDay = day;
+  $('startDayInput').value = day;
+  await saveData();
+  renderHome();
+  if(document.getElementById('view-analysis').classList.contains('active')) renderAnalysis();
+  toast(day === 1 ? '월 시작일을 1일(달력 기준)로 설정했어요' : `월 시작일을 매달 ${day}일로 설정했어요`);
 });
 $('pullNowBtn').addEventListener('click', ()=> pullFromSheet(false));
 
@@ -1918,12 +1960,6 @@ async function init(){
 init();
 
 $('pullSyncBtn').addEventListener('click', ()=> pullFromSheet(false));
-
-if('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')){
-  window.addEventListener('load', ()=>{
-    navigator.serviceWorker.register('sw.js').catch(err=>console.log('SW registration failed', err));
-  });
-}
 </script>
 </body>
 </html>
